@@ -11,7 +11,6 @@ class AuthPage extends StatefulWidget {
 
 class _AuthPageState extends State<AuthPage> {
   bool isLogin = true;
-
   void togglePage() => setState(() => isLogin = !isLogin);
 
   @override

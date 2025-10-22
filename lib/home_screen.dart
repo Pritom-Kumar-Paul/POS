@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final wide = MediaQuery.of(context).size.width > 700;
+    final bool wide = MediaQuery.of(context).size.width > 700;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Smart POS'),
@@ -13,7 +15,20 @@ class HomeScreen extends StatelessWidget {
           IconButton(
             tooltip: 'Sign out',
             icon: const Icon(Icons.logout),
-            onPressed: () => Navigator.of(context).pushReplacementNamed('/'),
+            onPressed: () async {
+              try {
+                await FirebaseAuth.instance.signOut(); // ✅ Logout from Firebase
+                if (context.mounted) {
+                  Navigator.of(
+                    context,
+                  ).pushReplacementNamed('/'); // Back to AuthPage
+                }
+              } catch (e) {
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(SnackBar(content: Text('Logout failed: $e')));
+              }
+            },
           ),
         ],
       ),
@@ -31,8 +46,7 @@ class HomeScreen extends StatelessWidget {
           _Tile(
             icon: Icons.receipt_long,
             label: 'Receipts',
-            onTap: () =>
-                Navigator.of(context).pushNamed('/receipts'), // <- changed
+            onTap: () => Navigator.of(context).pushNamed('/receipts'),
           ),
           _Tile(
             icon: Icons.inventory_2_outlined,
@@ -42,8 +56,7 @@ class HomeScreen extends StatelessWidget {
           _Tile(
             icon: Icons.people_alt_outlined,
             label: 'Customers',
-            onTap: () =>
-                Navigator.of(context).pushNamed('/customers'), // <- changed
+            onTap: () => Navigator.of(context).pushNamed('/customers'),
           ),
         ],
       ),
@@ -55,15 +68,16 @@ class _Tile extends StatelessWidget {
   final IconData icon;
   final String label;
   final VoidCallback? onTap;
+
   const _Tile({required this.icon, required this.label, this.onTap});
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+
     return Card(
-      elevation: 0,
-      color:
-          cs.surfaceContainerHighest, // if this errors, use cs.surfaceVariant
+      elevation: 2,
+      color: cs.surfaceVariant,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: InkWell(
         onTap: onTap,
@@ -72,9 +86,14 @@ class _Tile extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 36, color: cs.primary),
-              const SizedBox(height: 8),
-              Text(label, style: Theme.of(context).textTheme.titleMedium),
+              Icon(icon, size: 40, color: cs.primary),
+              const SizedBox(height: 10),
+              Text(
+                label,
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+              ),
             ],
           ),
         ),

@@ -1,93 +1,46 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_application_9/login_page.dart';
-import 'home_screen.dart';
-import 'sales_screen.dart';
-import 'products_screen.dart';
-import 'receipts_screen.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'customers_screen.dart';
+import 'firebase_options.dart';
+import 'auth_gate.dart';
+import 'home_screen.dart';
+import 'products_screen.dart';
+import 'sales_screen.dart';
+import 'receipts_screen.dart';
 
-// Optional: You can remove this later if you already have a separate login file
-class LoginScreen extends StatelessWidget {
-  const LoginScreen({super.key});
+import 'package:flutter_localizations/flutter_localizations.dart';
+// dev only
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.blue.shade50,
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Text(
-                'Smart POS Login',
-                style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 30),
-              TextField(
-                decoration: InputDecoration(
-                  labelText: 'Username',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-              TextField(
-                obscureText: true,
-                decoration: InputDecoration(
-                  labelText: 'Password',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 30),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 60,
-                    vertical: 15,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                onPressed: () {
-                  // Navigate to Home Screen
-                  Navigator.pushReplacementNamed(context, '/home');
-                },
-                child: const Text('Login', style: TextStyle(fontSize: 18)),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
-void main() {
+  // DEV ONLY: protibar app open e login page dite chaile, ei line on korো
+  // await FirebaseAuth.instance.signOut();
+
   runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
-
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      title: 'Tender App',
       debugShowCheckedModeBanner: false,
-      title: 'Smart POS',
-      // This is the starting screen
-      initialRoute: '/',
+      theme: ThemeData(useMaterial3: false, primarySwatch: Colors.indigo),
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+      ],
+      supportedLocales: const [Locale('en'), Locale('bn')],
+      home: const AuthGate(), // 🔑 login gate
       routes: {
-        '/': (_) => LoginPage(onPressed: () {}),
         '/home': (_) => const HomeScreen(),
         '/sale': (_) => const SalesScreen(),
-        '/products': (_) => const ProductsScreen(),
         '/receipts': (_) => const ReceiptsScreen(),
+        '/products': (_) => const ProductsScreen(),
         '/customers': (_) => const CustomersScreen(),
       },
     );
