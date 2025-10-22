@@ -6,8 +6,8 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool wide = MediaQuery.of(context).size.width > 700;
-
+    final wide = MediaQuery.of(context).size.width > 700;
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Smart POS'),
@@ -16,17 +16,11 @@ class HomeScreen extends StatelessWidget {
             tooltip: 'Sign out',
             icon: const Icon(Icons.logout),
             onPressed: () async {
-              try {
-                await FirebaseAuth.instance.signOut(); // ✅ Logout from Firebase
-                if (context.mounted) {
-                  Navigator.of(
-                    context,
-                  ).pushReplacementNamed('/'); // Back to AuthPage
-                }
-              } catch (e) {
-                ScaffoldMessenger.of(
+              await FirebaseAuth.instance.signOut();
+              if (context.mounted) {
+                Navigator.of(
                   context,
-                ).showSnackBar(SnackBar(content: Text('Logout failed: $e')));
+                ).pushNamedAndRemoveUntil('/', (r) => false);
               }
             },
           ),
@@ -37,26 +31,27 @@ class HomeScreen extends StatelessWidget {
         crossAxisCount: wide ? 4 : 2,
         crossAxisSpacing: 16,
         mainAxisSpacing: 16,
-        children: [
-          _Tile(
-            icon: Icons.point_of_sale,
-            label: 'New Sale',
-            onTap: () => Navigator.of(context).pushNamed('/sale'),
-          ),
+        children: const [
+          _Tile(icon: Icons.point_of_sale, label: 'New Sale', route: '/sale'),
           _Tile(
             icon: Icons.receipt_long,
             label: 'Receipts',
-            onTap: () => Navigator.of(context).pushNamed('/receipts'),
+            route: '/receipts',
           ),
           _Tile(
             icon: Icons.inventory_2_outlined,
             label: 'Products',
-            onTap: () => Navigator.of(context).pushNamed('/products'),
+            route: '/products',
           ),
           _Tile(
             icon: Icons.people_alt_outlined,
             label: 'Customers',
-            onTap: () => Navigator.of(context).pushNamed('/customers'),
+            route: '/customers',
+          ),
+          _Tile(
+            icon: Icons.assessment_outlined,
+            label: 'Reports',
+            route: '/reports',
           ),
         ],
       ),
@@ -67,33 +62,26 @@ class HomeScreen extends StatelessWidget {
 class _Tile extends StatelessWidget {
   final IconData icon;
   final String label;
-  final VoidCallback? onTap;
-
-  const _Tile({required this.icon, required this.label, this.onTap});
+  final String route;
+  const _Tile({required this.icon, required this.label, required this.route});
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-
     return Card(
-      elevation: 2,
-      color: cs.surfaceVariant,
+      elevation: 0,
+      color: cs.surfaceContainerHighest,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: InkWell(
-        onTap: onTap,
+        onTap: () => Navigator.of(context).pushNamed(route),
         borderRadius: BorderRadius.circular(12),
         child: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 40, color: cs.primary),
-              const SizedBox(height: 10),
-              Text(
-                label,
-                style: Theme.of(
-                  context,
-                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
-              ),
+              Icon(icon, size: 36, color: cs.primary),
+              const SizedBox(height: 8),
+              Text(label, style: Theme.of(context).textTheme.titleMedium),
             ],
           ),
         ),

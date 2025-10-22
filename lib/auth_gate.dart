@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'home_screen.dart';
 import 'auth_page.dart';
+import 'home_screen.dart';
+import 'app_bootstrap.dart';
 
 class AuthGate extends StatelessWidget {
   const AuthGate({super.key});
@@ -16,10 +17,15 @@ class AuthGate extends StatelessWidget {
             body: Center(child: CircularProgressIndicator()),
           );
         }
-        if (snap.hasData) {
-          return const HomeScreen(); // logged in
+        if (snap.hasError) {
+          return Scaffold(
+            body: Center(child: Text('Auth error: ${snap.error}')),
+          );
         }
-        return const AuthPage(); // not logged in
+        if (snap.hasData) {
+          return AppBootstrap(child: const HomeScreen());
+        }
+        return const AuthPage();
       },
     );
   }

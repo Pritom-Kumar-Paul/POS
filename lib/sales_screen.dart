@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
-import 'product_store.dart' as ps;
-import 'receipt_store.dart' as rs;
-import 'receipt_detail_screen.dart';
-import 'customer_store.dart' as cs;
+import 'package:flutter_application_9/product_store.dart' as ps;
+import 'package:flutter_application_9/receipt_store.dart' as rs;
+import 'package:flutter_application_9/customer_store.dart' as cs;
+import 'package:flutter_application_9/receipt_detail_screen.dart';
+// Optional: jodi error hoy, fmtMoney bad diyeo chalano jabe
+import 'package:flutter_application_9/utils/format.dart';
 
 class SalesScreen extends StatefulWidget {
   final String? initialCustomerId;
@@ -17,11 +19,19 @@ class _SalesScreenState extends State<SalesScreen> {
   String _query = '';
   String? _customerId;
 
+  int _discount = 0;
+  int _tax = 0;
+  rs.PaymentMethod _payment = rs.PaymentMethod.cash;
+
   @override
   void initState() {
     super.initState();
     _customerId = widget.initialCustomerId;
     ps.productStore.addListener(_onProductsChanged);
+
+    debugPrint(
+      'SalesScreen init: isBound=${ps.productStore != null} count=${ps.productStore.items.length}',
+    );
   }
 
   @override
@@ -31,7 +41,9 @@ class _SalesScreenState extends State<SalesScreen> {
     super.dispose();
   }
 
-  void _onProductsChanged() => setState(() {});
+  void _onProductsChanged() {
+    setState(() {});
+  }
 
   List<ps.Product> get _filtered {
     final q = _query.trim().toLowerCase();
@@ -51,7 +63,7 @@ class _SalesScreenState extends State<SalesScreen> {
     setState(() => _cartQty[p.id] = current + 1);
   }
 
-  int get _total {
+  int get _subtotal {
     int sum = 0;
     for (final p in ps.productStore.items) {
       final qty = _cartQty[p.id] ?? 0;
@@ -60,10 +72,11 @@ class _SalesScreenState extends State<SalesScreen> {
     return sum;
   }
 
+  int get _total => _subtotal - _discount + _tax;
+
   Future<void> _checkout() async {
     if (_cartQty.isEmpty) return;
 
-    // validate stock
     for (final entry in _cartQty.entries) {
       final p = ps.productStore.items.firstWhere((e) => e.id == entry.key);
       if (entry.value > p.stock) {
@@ -74,7 +87,6 @@ class _SalesScreenState extends State<SalesScreen> {
       }
     }
 
-    // Build receipt items
     final items = _cartQty.entries.map((e) {
       final p = ps.productStore.items.firstWhere((x) => x.id == e.key);
       return rs.ReceiptItem(
@@ -85,33 +97,36 @@ class _SalesScreenState extends State<SalesScreen> {
       );
     }).toList();
 
-    // Apply sale to inventory
-    for (final entry in _cartQty.entries) {
-      final ok = ps.productStore.sell(entry.key, entry.value);
-      if (!ok) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Sale failed. Please try again.')),
-        );
-        return;
-      }
+    try {
+      final receipt = await rs.receiptStore.addReceipt(
+        items: items,
+        discount: _discount,
+        tax: _tax,
+        customerId: _customerId,
+        paymentMethod: _payment,
+      );
+
+      setState(() {
+        _cartQty.clear();
+        _searchCtrl.clear();
+        _query = '';
+        _discount = 0;
+        _tax = 0;
+        _payment = rs.PaymentMethod.cash;
+      });
+
+      if (!mounted) return;
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ReceiptDetailScreen(receipt: receipt),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Checkout failed: $e')));
     }
-
-    // Save receipt with customerId (may be null = Walk-in)
-    final receipt = rs.receiptStore.addReceipt(
-      items: items,
-      customerId: _customerId,
-    );
-
-    setState(() {
-      _cartQty.clear();
-      _searchCtrl.clear();
-      _query = '';
-    });
-
-    if (!mounted) return;
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => ReceiptDetailScreen(receipt: receipt)),
-    );
   }
 
   Future<void> _pickCustomer() async {
@@ -121,14 +136,54 @@ class _SalesScreenState extends State<SalesScreen> {
     }
   }
 
+  Future<void> _setDiscountTax() async {
+    final result = await _showDiscountTaxSheet(context, _discount, _tax);
+    if (result != null) {
+      setState(() {
+        _discount = result.$1;
+        _tax = result.$2;
+      });
+    }
+  }
+
+  Future<void> _pickPayment() async {
+    final selected = await _showPaymentPicker(context, _payment);
+    if (selected != null) {
+      setState(() => _payment = selected);
+    }
+  }
+
+  String _paymentLabel(rs.PaymentMethod m) {
+    switch (m) {
+      case rs.PaymentMethod.cash:
+        return 'Cash';
+      case rs.PaymentMethod.card:
+        return 'Card';
+      case rs.PaymentMethod.mobile:
+        return 'Mobile';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final selectedName = (_customerId != null)
-        ? (cs.customerStore.byId(_customerId!)?.name ?? 'Unknown')
-        : 'Walk-in';
+    debugPrint(
+      'SalesScreen build: items=${ps.productStore.items.length}, filtered=${_filtered.length}, query="$_query"',
+    );
+
+    final selectedName = (() {
+      if (_customerId == null) return 'Walk-in';
+      try {
+        return cs.customerStore.byId(_customerId!)?.name ?? 'Unknown';
+      } catch (_) {
+        return 'Walk-in';
+      }
+    })();
+
+    final bottomInset = MediaQuery.of(context).viewPadding.bottom;
 
     return Scaffold(
       appBar: AppBar(title: const Text('New Sale')),
+      // bottomNavigationBar BADH diyেছি, niche Column e bottom panel add kora
       body: Column(
         children: [
           // Customer selector
@@ -149,6 +204,28 @@ class _SalesScreenState extends State<SalesScreen> {
               ],
             ),
           ),
+          // Controls row: discount/tax + payment
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Row(
+              children: [
+                OutlinedButton.icon(
+                  onPressed: _setDiscountTax,
+                  icon: const Icon(Icons.percent),
+                  label: Text(
+                    'Discount/Tax (${_discount > 0 ? '-${fmtMoney(context, _discount)}' : '0'}'
+                    '${_tax > 0 ? ' / +${fmtMoney(context, _tax)}' : ''})',
+                  ),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  onPressed: _pickPayment,
+                  icon: const Icon(Icons.payments),
+                  label: Text('Payment: ${_paymentLabel(_payment)}'),
+                ),
+              ],
+            ),
+          ),
           // Search box
           Padding(
             padding: const EdgeInsets.all(12),
@@ -162,71 +239,123 @@ class _SalesScreenState extends State<SalesScreen> {
               onChanged: (v) => setState(() => _query = v),
             ),
           ),
+          // Product list (safe + visible)
           Expanded(
-            child: ListView.separated(
-              itemCount: _filtered.length,
-              separatorBuilder: (_, __) => const Divider(height: 1),
-              itemBuilder: (context, i) {
-                final p = _filtered[i];
-                final qty = _cartQty[p.id] ?? 0;
-                final canAdd = p.stock > 0 && qty < p.stock;
+            child: Container(
+              color: Colors.yellow.shade50, // visibly show the list area
+              child: _filtered.isEmpty
+                  ? Center(
+                      child: Text(
+                        _query.isEmpty
+                            ? 'No products to show'
+                            : 'No results for "$_query"',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.black),
+                      ),
+                    )
+                  : ListView.builder(
+                      itemCount: _filtered.length,
+                      itemBuilder: (context, i) {
+                        final p = _filtered[i];
+                        debugPrint('render item $i: ${p.name}');
+                        final qty = _cartQty[p.id] ?? 0;
+                        final canAdd = p.stock > 0 && qty < p.stock;
 
-                return ListTile(
-                  title: Text(p.name),
-                  subtitle: Text('৳${p.price} • In stock: ${p.stock}'),
-                  trailing: qty == 0
-                      ? ElevatedButton(
-                          onPressed: canAdd ? () => _addToCart(p) : null,
-                          child: const Text('Add'),
-                        )
-                      : Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.remove),
-                              onPressed: () {
-                                setState(() {
-                                  final now = qty - 1;
-                                  if (now <= 0) {
-                                    _cartQty.remove(p.id);
-                                  } else {
-                                    _cartQty[p.id] = now;
-                                  }
-                                });
-                              },
+                        return Container(
+                          color: i.isEven ? Colors.white : Colors.grey.shade100,
+                          child: ListTile(
+                            title: Text(
+                              p.name,
+                              style: const TextStyle(color: Colors.black),
                             ),
-                            Text('$qty'),
-                            IconButton(
-                              icon: const Icon(Icons.add),
-                              onPressed: canAdd ? () => _addToCart(p) : null,
+                            subtitle: Text(
+                              '${fmtMoney(context, p.price)} • In stock: ${p.stock}',
+                              style: const TextStyle(color: Colors.black87),
                             ),
-                          ],
+                            trailing: qty == 0
+                                ? ElevatedButton(
+                                    onPressed: canAdd
+                                        ? () => _addToCart(p)
+                                        : null,
+                                    child: const Text('Add'),
+                                  )
+                                : Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        icon: const Icon(Icons.remove),
+                                        onPressed: () {
+                                          setState(() {
+                                            final now = qty - 1;
+                                            if (now <= 0) {
+                                              _cartQty.remove(p.id);
+                                            } else {
+                                              _cartQty[p.id] = now;
+                                            }
+                                          });
+                                        },
+                                      ),
+                                      Text(
+                                        '$qty',
+                                        style: const TextStyle(
+                                          color: Colors.black,
+                                        ),
+                                      ),
+                                      IconButton(
+                                        icon: const Icon(Icons.add),
+                                        onPressed: canAdd
+                                            ? () => _addToCart(p)
+                                            : null,
+                                      ),
+                                    ],
+                                  ),
+                            onTap: canAdd ? () => _addToCart(p) : null,
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ),
+          // Bottom panel (instead of bottomNavigationBar)
+          Container(
+            padding: EdgeInsets.fromLTRB(12, 8, 12, 12 + bottomInset),
+            decoration: BoxDecoration(
+              color: Theme.of(context).scaffoldBackgroundColor,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.06),
+                  blurRadius: 8,
+                  offset: const Offset(0, -2),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Subtotal: ${fmtMoney(context, _subtotal)}'),
+                      if (_discount > 0 || _tax > 0)
+                        Text(
+                          'Adj: -${fmtMoney(context, _discount)} / +${fmtMoney(context, _tax)}',
+                          style: Theme.of(context).textTheme.bodySmall,
                         ),
-                  onTap: canAdd ? () => _addToCart(p) : null,
-                );
-              },
+                      Text(
+                        'Total: ${fmtMoney(context, _total)}',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                    ],
+                  ),
+                ),
+                FilledButton(
+                  onPressed: _cartQty.isEmpty ? null : _checkout,
+                  child: const Text('Checkout'),
+                ),
+              ],
             ),
           ),
         ],
-      ),
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Total: ৳$_total',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-              ),
-              FilledButton(
-                onPressed: _cartQty.isEmpty ? null : _checkout,
-                child: const Text('Checkout'),
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -306,7 +435,9 @@ class _SalesScreenState extends State<SalesScreen> {
                           onPressed: () async {
                             final newId = await _quickAddCustomer(ctx);
                             if (newId != null) {
-                              if (ctx.mounted) Navigator.of(ctx).pop(newId);
+                              if (ctx.mounted) {
+                                Navigator.of(ctx).pop(newId);
+                              }
                             }
                           },
                         ),
@@ -351,7 +482,9 @@ class _SalesScreenState extends State<SalesScreen> {
                     prefixIcon: Icon(Icons.person_outline),
                   ),
                   validator: (v) {
-                    if (v == null || v.trim().isEmpty) return 'Enter name';
+                    if (v == null || v.trim().isEmpty) {
+                      return 'Enter name';
+                    }
                     return null;
                   },
                 ),
@@ -368,15 +501,17 @@ class _SalesScreenState extends State<SalesScreen> {
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton(
-                    onPressed: () {
+                    onPressed: () async {
                       if (!formKey.currentState!.validate()) return;
-                      final id = cs.customerStore.addCustomer(
+                      final id = await cs.customerStore.addCustomer(
                         name: nameCtrl.text.trim(),
                         phone: phoneCtrl.text.trim().isEmpty
                             ? null
                             : phoneCtrl.text.trim(),
                       );
-                      Navigator.of(ctx).pop(id);
+                      if (ctx.mounted) {
+                        Navigator.of(ctx).pop(id);
+                      }
                     },
                     child: const Text('Save'),
                   ),
@@ -388,4 +523,119 @@ class _SalesScreenState extends State<SalesScreen> {
       },
     );
   }
+}
+
+Future<(int, int)?> _showDiscountTaxSheet(
+  BuildContext context,
+  int initialDiscount,
+  int initialTax,
+) {
+  final discountCtrl = TextEditingController(text: '$initialDiscount');
+  final taxCtrl = TextEditingController(text: '$initialTax');
+  final formKey = GlobalKey<FormState>();
+  return showModalBottomSheet<(int, int)>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (ctx) {
+      final bottom = MediaQuery.of(ctx).viewInsets.bottom;
+      return Padding(
+        padding: EdgeInsets.fromLTRB(16, 12, 16, bottom + 16),
+        child: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Discount & Tax',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: discountCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Discount (৳)',
+                  prefixIcon: Icon(Icons.percent),
+                ),
+                keyboardType: TextInputType.number,
+                validator: (v) {
+                  final n = int.tryParse(v ?? '');
+                  if (n == null || n < 0) return 'Invalid';
+                  return null;
+                },
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: taxCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Tax (৳)',
+                  prefixIcon: Icon(Icons.receipt_long),
+                ),
+                keyboardType: TextInputType.number,
+                validator: (v) {
+                  final n = int.tryParse(v ?? '');
+                  if (n == null || n < 0) return 'Invalid';
+                  return null;
+                },
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: () {
+                    if (!formKey.currentState!.validate()) return;
+                    Navigator.of(ctx).pop((
+                      int.parse(discountCtrl.text),
+                      int.parse(taxCtrl.text),
+                    ));
+                  },
+                  child: const Text('Apply'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+}
+
+Future<rs.PaymentMethod?> _showPaymentPicker(
+  BuildContext context,
+  rs.PaymentMethod current,
+) {
+  return showModalBottomSheet<rs.PaymentMethod>(
+    context: context,
+    showDragHandle: true,
+    builder: (ctx) {
+      Widget tile(String label, rs.PaymentMethod m, IconData icon) {
+        return ListTile(
+          leading: Icon(icon),
+          title: Text(label),
+          trailing: current == m
+              ? const Icon(Icons.check, color: Colors.green)
+              : null,
+          onTap: () => Navigator.of(ctx).pop(m),
+        );
+      }
+
+      return Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Select payment',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 8),
+            tile('Cash', rs.PaymentMethod.cash, Icons.payments),
+            tile('Card', rs.PaymentMethod.card, Icons.credit_card),
+            tile('Mobile', rs.PaymentMethod.mobile, Icons.phone_iphone),
+            const SizedBox(height: 8),
+          ],
+        ),
+      );
+    },
+  );
 }

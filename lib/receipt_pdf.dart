@@ -3,9 +3,12 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:pdf/pdf.dart';
 import 'receipt_store.dart';
 
-
-
-Future<Uint8List> buildReceiptPdf(Receipt r, {String currency = 'Tk'}) async {
+Future<Uint8List> buildReceiptPdf(
+  Receipt r, {
+  String currency = '৳',
+  String? customerName,
+  String? customerPhone,
+}) async {
   final pdf = pw.Document();
 
   String two(int n) => n.toString().padLeft(2, '0');
@@ -28,6 +31,11 @@ Future<Uint8List> buildReceiptPdf(Receipt r, {String currency = 'Tk'}) async {
             pw.SizedBox(height: 4),
             pw.Text('Receipt #${r.number}'),
             pw.Text('Date: $dateStr'),
+            if (customerName != null && customerName.isNotEmpty)
+              pw.Text(
+                'Customer: $customerName${customerPhone != null ? ' • $customerPhone' : ''}',
+              ),
+            pw.Text('Payment: ${r.paymentMethod.label}'),
             pw.SizedBox(height: 12),
             pw.Divider(),
             pw.Table(

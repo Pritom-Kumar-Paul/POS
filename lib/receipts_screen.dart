@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'receipt_store.dart' as rs;
 import 'receipt_detail_screen.dart';
+import 'utils/format.dart';
 
 class ReceiptsScreen extends StatelessWidget {
   const ReceiptsScreen({super.key});
@@ -20,14 +21,18 @@ class ReceiptsScreen extends StatelessWidget {
                   separatorBuilder: (_, __) => const Divider(height: 1),
                   itemBuilder: (context, i) {
                     final r = list[i];
-                    final dt = _fmt(r.createdAt);
+                    final dt = fmtDate(r.createdAt);
                     final itemsCount = r.items.fold<int>(
                       0,
                       (s, it) => s + it.qty,
                     );
                     return ListTile(
-                      title: Text('Receipt #${r.number} • ৳${r.total}'),
-                      subtitle: Text('$dt • Items: $itemsCount'),
+                      title: Text(
+                        'Receipt #${r.number} • ${fmtMoney(context, r.total)}',
+                      ),
+                      subtitle: Text(
+                        '$dt • Items: $itemsCount • ${r.paymentMethod.label}',
+                      ),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: () {
                         Navigator.of(context).push(
@@ -42,10 +47,5 @@ class ReceiptsScreen extends StatelessWidget {
         );
       },
     );
-  }
-
-  String _fmt(DateTime d) {
-    String two(int n) => n.toString().padLeft(2, '0');
-    return '${d.year}-${two(d.month)}-${two(d.day)} ${two(d.hour)}:${two(d.minute)}';
   }
 }

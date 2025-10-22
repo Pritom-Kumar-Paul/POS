@@ -1,4 +1,7 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'repositories/customer_repository.dart';
 
 class Customer {
   final String id;
@@ -34,26 +37,56 @@ class Customer {
       createdAt: createdAt ?? this.createdAt,
     );
   }
+
+  Map<String, dynamic> toMap() => {
+    'name': name,
+    'phone': phone,
+    'email': email,
+    'address': address,
+    'createdAt': DateTime.now().toUtc(),
+  };
+
+  factory Customer.fromMap(String id, Map<String, dynamic> m) {
+    final ts = m['createdAt'];
+    final createdAt = ts is Timestamp
+        ? ts.toDate()
+        : DateTime.tryParse('$ts') ?? DateTime.now();
+    return Customer(
+      id: id,
+      name: (m['name'] as String?) ?? '',
+      phone: m['phone'] as String?,
+      email: m['email'] as String?,
+      address: m['address'] as String?,
+      createdAt: createdAt,
+    );
+  }
 }
 
 class CustomerStore extends ChangeNotifier {
-  final List<Customer> _items = [
-    Customer(id: 'c_walkin', name: 'Walk-in', createdAt: DateTime.now()),
-    Customer(
-      id: 'c1',
-      name: 'Rahim Uddin',
-      phone: '01700000000',
-      createdAt: DateTime.now(),
-    ),
-    Customer(
-      id: 'c2',
-      name: 'Karim Mia',
-      phone: '01800000000',
-      createdAt: DateTime.now(),
-    ),
-  ];
-
+  final List<Customer> _items = [];
   List<Customer> get items => List.unmodifiable(_items);
+
+  StreamSubscription? _sub;
+  CustomerRepository? _repo;
+
+  void bind(String orgId) {
+    _repo = CustomerRepository(orgId);
+    _sub?.cancel();
+    _sub = _repo!.streamAll().listen((list) {
+      _items
+        ..clear()
+        ..addAll(list);
+      notifyListeners();
+    });
+  }
+
+  void unbind() {
+    _sub?.cancel();
+    _sub = null;
+    _repo = null;
+    _items.clear();
+    notifyListeners();
+  }
 
   Customer? byId(String id) {
     try {
@@ -63,16 +96,15 @@ class CustomerStore extends ChangeNotifier {
     }
   }
 
-  String addCustomer({
+  Future<String> addCustomer({
     required String name,
     String? phone,
     String? email,
     String? address,
-  }) {
-    final id = DateTime.now().millisecondsSinceEpoch.toString();
-    _items.add(
+  }) async {
+    return _repo!.addCustomer(
       Customer(
-        id: id,
+        id: 'new',
         name: name,
         phone: phone,
         email: email,
@@ -80,23 +112,11 @@ class CustomerStore extends ChangeNotifier {
         createdAt: DateTime.now(),
       ),
     );
-    notifyListeners();
-    return id;
   }
 
-  void updateCustomer(Customer updated) {
-    final i = _items.indexWhere((e) => e.id == updated.id);
-    if (i != -1) {
-      _items[i] = updated;
-      notifyListeners();
-    }
-  }
-
-  void removeCustomer(String id) {
-    if (id == 'c_walkin') return;
-    _items.removeWhere((e) => e.id == id);
-    notifyListeners();
-  }
+  Future<void> updateCustomer(Customer updated) async =>
+      _repo!.updateCustomer(updated);
+  Future<void> removeCustomer(String id) async => _repo!.deleteCustomer(id);
 }
 
 final customerStore = CustomerStore();

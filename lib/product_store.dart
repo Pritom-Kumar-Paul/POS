@@ -1,11 +1,15 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'repositories/product_repository.dart';
 
 class Product {
   final String id;
   final String name;
-  final int price; // ৳
-  final int stock; // available units
-  final int sold; // total sold
+  final int price;
+  final int stock;
+  final int sold;
+  final String category;
+  final int lowStockThreshold;
 
   const Product({
     required this.id,
@@ -13,6 +17,8 @@ class Product {
     required this.price,
     required this.stock,
     required this.sold,
+    this.category = 'General',
+    this.lowStockThreshold = 3,
   });
 
   Product copyWith({
@@ -21,6 +27,8 @@ class Product {
     int? price,
     int? stock,
     int? sold,
+    String? category,
+    int? lowStockThreshold,
   }) {
     return Product(
       id: id ?? this.id,
@@ -28,58 +36,108 @@ class Product {
       price: price ?? this.price,
       stock: stock ?? this.stock,
       sold: sold ?? this.sold,
+      category: category ?? this.category,
+      lowStockThreshold: lowStockThreshold ?? this.lowStockThreshold,
+    );
+  }
+
+  bool get isLowStock => stock <= lowStockThreshold;
+
+  Map<String, dynamic> toMap() => {
+    'name': name,
+    'price': price,
+    'stock': stock,
+    'sold': sold,
+    'category': category,
+    'lowStockThreshold': lowStockThreshold,
+    'createdAt': DateTime.now().toUtc(),
+  };
+
+  factory Product.fromMap(String id, Map<String, dynamic> m) {
+    return Product(
+      id: id,
+      name: (m['name'] as String?) ?? '',
+      price: (m['price'] as int?) ?? 0,
+      stock: (m['stock'] as int?) ?? 0,
+      sold: (m['sold'] as int?) ?? 0,
+      category: (m['category'] as String?) ?? 'General',
+      lowStockThreshold: (m['lowStockThreshold'] as int?) ?? 3,
     );
   }
 }
 
 class ProductStore extends ChangeNotifier {
-  final List<Product> _items = [
-    Product(id: 'p1', name: 'Cap', price: 300, stock: 10, sold: 0),
-    Product(id: 'p2', name: 'Cap - Blue', price: 350, stock: 8, sold: 0),
-    Product(id: 'p3', name: 'T-Shirt', price: 600, stock: 15, sold: 0),
-  ];
-
+  List<Product> _items = [];
   List<Product> get items => List.unmodifiable(_items);
 
-  void addProduct({
+  StreamSubscription? _sub;
+  ProductRepository? _repo;
+
+  void bind(String orgId) {
+    _repo = ProductRepository(orgId);
+    _sub?.cancel();
+    _sub = _repo!.streamAll().listen((list) {
+      _items = list;
+      notifyListeners();
+    });
+  }
+
+  void unbind() {
+    _sub?.cancel();
+    _sub = null;
+    _repo = null;
+    _items = [];
+    notifyListeners();
+  }
+
+  void _ensureBound() {
+    if (_repo == null) {
+      throw StateError(
+        'ProductStore is not bound. Call bind(orgId) before using the store.',
+      );
+    }
+  }
+
+  List<String> get categories => [
+    'All',
+    ...{for (final p in _items) p.category},
+  ];
+
+  Future<void> addProduct({
     required String name,
     required int price,
     required int stock,
-  }) {
-    final id = DateTime.now().millisecondsSinceEpoch.toString();
-    _items.add(
-      Product(id: id, name: name, price: price, stock: stock, sold: 0),
+    String category = 'General',
+    int lowStockThreshold = 3,
+  }) async {
+    _ensureBound();
+    await _repo!.addProduct(
+      Product(
+        id: 'new',
+        name: name,
+        price: price,
+        stock: stock,
+        sold: 0,
+        category: category,
+        lowStockThreshold: lowStockThreshold,
+      ),
     );
-    notifyListeners();
   }
 
-  void removeProduct(String id) {
-    _items.removeWhere((e) => e.id == id);
-    notifyListeners();
+  Future<void> updateProduct(Product updated) async {
+    _ensureBound();
+    await _repo!.updateProduct(updated);
   }
 
-  // Optional: add (+/-) stock
-  void restock(String id, int delta) {
-    final i = _items.indexWhere((e) => e.id == id);
-    if (i == -1) return;
-    final p = _items[i];
-    final newStock = (p.stock + delta);
-    if (newStock < 0) return;
-    _items[i] = p.copyWith(stock: newStock);
-    notifyListeners();
+  Future<void> removeProduct(String id) async {
+    _ensureBound();
+    await _repo!.deleteProduct(id);
   }
 
-  // Decrease stock, increase sold when a sale happens
-  bool sell(String id, int qty) {
-    final i = _items.indexWhere((e) => e.id == id);
-    if (i == -1) return false;
-    final p = _items[i];
-    if (qty <= 0 || p.stock < qty) return false;
-    _items[i] = p.copyWith(stock: p.stock - qty, sold: p.sold + qty);
-    notifyListeners();
-    return true;
+  Future<void> restock(String id, int delta) async {
+    _ensureBound();
+    await _repo!.restock(id, delta);
   }
 }
 
-// Global singleton (do not duplicate this in other files)
 final productStore = ProductStore();
